@@ -58,6 +58,7 @@ public class RabbitmqRiver extends AbstractRiverComponent implements River {
     private final boolean rabbitExchangeDurable;
     private final boolean rabbitQueueDurable;
     private final boolean rabbitQueueAutoDelete;
+    private int numPrefetch;
     private Map rabbitQueueArgs = null; //extra arguments passed to queue for creation (ha settings for example)
 
     private final int bulkSize;
@@ -103,6 +104,7 @@ public class RabbitmqRiver extends AbstractRiverComponent implements River {
             rabbitExchangeDurable = XContentMapValues.nodeBooleanValue(rabbitSettings.get("exchange_durable"), true);
             rabbitQueueDurable = XContentMapValues.nodeBooleanValue(rabbitSettings.get("queue_durable"), true);
             rabbitQueueAutoDelete = XContentMapValues.nodeBooleanValue(rabbitSettings.get("queue_auto_delete"), false);
+            numPrefetch = XContentMapValues.nodeIntegerValue(rabbitSettings.get("num_prefetch"), 0);
 
             if (rabbitSettings.containsKey("args")) {
                 rabbitQueueArgs = (Map<String, Object>) rabbitSettings.get("args");
@@ -145,8 +147,7 @@ public class RabbitmqRiver extends AbstractRiverComponent implements River {
         connectionFactory.setPassword(rabbitPassword);
         connectionFactory.setVirtualHost(rabbitVhost);
 
-        logger.info("creating rabbitmq river, addresses [{}], user [{}], vhost [{}]", rabbitAddresses, connectionFactory.getUsername(), connectionFactory.getVirtualHost());
-
+        logger.info("creating rabbitmq river, addresses [{}], user [{}], vhost [{}], prefetch [{}]", rabbitAddresses, connectionFactory.getUsername(), connectionFactory.getVirtualHost(), numPrefetch);
         thread = EsExecutors.daemonThreadFactory(settings.globalSettings(), "rabbitmq_river").newThread(new Consumer());
         thread.start();
     }
@@ -176,6 +177,7 @@ public class RabbitmqRiver extends AbstractRiverComponent implements River {
                 try {
                     connection = connectionFactory.newConnection(rabbitAddresses);
                     channel = connection.createChannel();
+                    if (numPrefetch != 0) channel.basicQos(numPrefetch);
                 } catch (Exception e) {
                     if (!closed) {
                         logger.warn("failed to created a connection / channel", e);
